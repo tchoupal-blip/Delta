@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Options Delta &amp; IV Calculator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+  h1 { text-align: center; margin-bottom: 20px; }
+  .controls { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
+  input[type="text"] { padding: 8px 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; width: 140px; text-transform: uppercase; }
+  button { padding: 8px 18px; font-size: 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #94a3b8; cursor: not-allowed; }
+  select { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+  .info { text-align: center; margin-bottom: 16px; font-size: 18px; }
+  .tables { display: grid; grid-template-columns: 1fr; gap: 20px; }
+  @media (max-width: 900px) { .tables { grid-template-columns: 1fr; } }
+  .table-wrap h2 { margin-bottom: 8px; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  th, td { padding: 6px 8px; text-align: right; font-size: 12px; border-bottom: 1px solid #eee; white-space: nowrap; }
+  .dte-col { background: #f8fafc; }
+  tr:hover .dte-col { background: #e8eeff; }
+  th.dte-col { background: #334155; }
+  th { background: #1e293b; color: #fff; position: sticky; top: 0; cursor: pointer; user-select: none; }
+  th:hover { background: #334155; }
+  th .sort-arrow { font-size: 10px; margin-left: 3px; opacity: 0.4; }
+  th.sorted .sort-arrow { opacity: 1; }
+  td:first-child, th:first-child { text-align: left; }
+  tr:hover td { background: #f0f4ff; }
+  .loading { text-align: center; padding: 40px; font-size: 16px; color: #666; }
+  .error { text-align: center; color: #dc2626; padding: 20px; }
+  .pos { color: #16a34a; }
+  .neg { color: #dc2626; }
+</style>
+</head>
+<body>
+<h1>Options Delta &amp; IV Calculator</h1>
+
+<div class="controls">
+  <input type="text" id="ticker" placeholder="e.g. AAPL" />
+  <button id="fetchBtn" onclick="fetchData()">Get Options</button>
+  <select id="expSelect" onchange="renderExpiration()" style="display:none"></select>
+</div>
+
+<div id="info" class="info"></div>
+<div id="content"></div>
+
+<script>
+let optionsData = null;
+
+async function fetchData() {
+  const ticker = document.getElementById("ticker").value.trim();
+  if (!ticker) return;
+  const btn = document.getElementById("fetchBtn");
+  const content = document.getElementById("content");
+  const info = document.getElementById("info");
+  const expSelect = document.getElementById("expSelect");
+
+  btn.disabled = true;
+  btn.textContent = "Loading...";
+  content.innerHTML = '<div class="loading">Fetching options data...</div>';
+  info.textContent = "";
+  expSelect.style.display = "none";
+
+  try {
+    const res = await fetch("/api/options/" + encodeURIComponent(ticker));
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Request failed");
+    }
+    optionsData = await res.json();
+    info.textContent = optionsData.ticker + "  —  $" + optionsData.price.toFixed(2);
+
+    // Populate expiration dropdown
+    expSelect.innerHTML = "";
+    optionsData.expirations.forEach((exp, i) => {
+      const opt = document.createElement("option");
+      opt.value = i;
+      opt.textContent = exp.date;
+      expSelect.appendChild(opt);
+    });
+    expSelect.style.display = "inline-block";
+    renderExpiration();
+  } catch (e) {
+    content.innerHTML = '<div class="error">' + e.message + '</div>';
+    info.textContent = "";
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Get Options";
+  }
+}
+
+function renderExpiration() {
+  if (!optionsData) return;
+  const idx = document.getElementById("expSelect").value;
+  const exp = optionsData.expirations[idx];
+  const content = document.getElementById("content");
+
+  content.innerHTML = '<div class="tables">'
+    + '<div class="table-wrap"><h2>Calls</h2><div id="table-calls"></div></div>'
+    + '<div class="table-wrap"><h2>Puts</h2><div id="table-puts"></div></div>'
+    + '</div>';
+  buildSortableTable("table-calls", exp.calls);
+  buildSortableTable("table-puts", exp.puts);
+}
+
+const DTE_KEYS = ["0d", "1-7d", "8-30d", "31-90d", "91-180d", "181-365d"];
+
+const COLUMNS = [
+  { key: "strike", label: "Strike", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
+  { key: "lastPrice", label: "Last", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
+  { key: "bid", label: "Bid", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
+  { key: "ask", label: "Ask", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
+  { key: "iv", label: "IV (%)", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
+  { key: "delta", label: "Delta", fmt: v => v !== null ? v.toFixed(4) : "\u2014", colored: true },
+  ...DTE_KEYS.map(k => ({
+    key: "dte_" + k, label: "\u0394 " + k, dte: true, colored: true,
+    getValue: r => r.deltaByDte && r.deltaByDte[k],
+    fmt: v => v !== null && v !== undefined ? v.toFixed(4) : "\u2014",
+  })),
+];
+
+function buildSortableTable(containerId, rows) {
+  const state = { sortKey: null, sortAsc: true };
+
+  function render(data) {
+    const container = document.getElementById(containerId);
+    const table = document.createElement("table");
+
+    // Header
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    for (const col of COLUMNS) {
+      const th = document.createElement("th");
+      if (col.dte) th.classList.add("dte-col");
+      const arrow = state.sortKey === col.key
+        ? (state.sortAsc ? " \u25B2" : " \u25BC")
+        : " \u25B2";
+      th.innerHTML = col.label + '<span class="sort-arrow">' + arrow + '</span>';
+      if (state.sortKey === col.key) th.classList.add("sorted");
+      th.addEventListener("click", () => {
+        if (state.sortKey === col.key) {
+          state.sortAsc = !state.sortAsc;
+        } else {
+          state.sortKey = col.key;
+          state.sortAsc = true;
+        }
+        const sorted = [...data].sort((a, b) => {
+          const av = col.getValue ? col.getValue(a) : a[col.key];
+          const bv = col.getValue ? col.getValue(b) : b[col.key];
+          const an = av !== null && av !== undefined ? av : -Infinity;
+          const bn = bv !== null && bv !== undefined ? bv : -Infinity;
+          return state.sortAsc ? an - bn : bn - an;
+        });
+        render(sorted);
+      });
+      headerRow.appendChild(th);
+    }
+    thead.appendChild(headerRow);
+    table.appendChild(thead);
+
+    // Body
+    const tbody = document.createElement("tbody");
+    for (const r of data) {
+      const tr = document.createElement("tr");
+      for (const col of COLUMNS) {
+        const td = document.createElement("td");
+        const val = col.getValue ? col.getValue(r) : r[col.key];
+        td.textContent = col.fmt(val);
+        if (col.dte) td.classList.add("dte-col");
+        if (col.colored && val !== null && val !== undefined) {
+          td.classList.add(val >= 0 ? "pos" : "neg");
+        }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+
+    container.innerHTML = "";
+    container.appendChild(table);
+  }
+
+  render(rows);
+}
+
+document.getElementById("ticker").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") fetchData();
+});
+</script>
+</body>
+</html>
