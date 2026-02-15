@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Options Delta &amp; IV Calculator</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
@@ -33,6 +34,7 @@
   .error { text-align: center; color: #dc2626; padding: 20px; }
   .pos { color: #16a34a; }
   .neg { color: #dc2626; }
+  .chart-wrap { max-width: 900px; margin: 0 auto 24px; background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 </style>
 </head>
 <body>
@@ -98,12 +100,89 @@ function renderExpiration() {
   const exp = optionsData.expirations[idx];
   const content = document.getElementById("content");
 
-  content.innerHTML = '<div class="tables">'
+  content.innerHTML = '<div class="chart-wrap"><canvas id="deltaChart"></canvas></div>'
+    + '<div class="tables">'
     + '<div class="table-wrap"><h2>Calls</h2><div id="table-calls"></div></div>'
     + '<div class="table-wrap"><h2>Puts</h2><div id="table-puts"></div></div>'
     + '</div>';
+  renderDeltaChart(exp.calls, exp.puts, optionsData.price);
   buildSortableTable("table-calls", exp.calls);
   buildSortableTable("table-puts", exp.puts);
+}
+
+let deltaChartInstance = null;
+
+function renderDeltaChart(calls, puts, spotPrice) {
+  if (deltaChartInstance) deltaChartInstance.destroy();
+
+  const callData = calls
+    .filter(r => r.delta !== null)
+    .map(r => ({ x: r.strike, y: r.delta }));
+  const putData = puts
+    .filter(r => r.delta !== null)
+    .map(r => ({ x: r.strike, y: r.delta }));
+
+  deltaChartInstance = new Chart(document.getElementById("deltaChart"), {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Call Delta",
+          data: callData,
+          borderColor: "#16a34a",
+          backgroundColor: "rgba(22,163,74,0.15)",
+          showLine: true,
+          pointRadius: 2,
+          borderWidth: 2,
+        },
+        {
+          label: "Put Delta",
+          data: putData,
+          borderColor: "#dc2626",
+          backgroundColor: "rgba(220,38,38,0.15)",
+          showLine: true,
+          pointRadius: 2,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: "Delta vs Strike Price", font: { size: 16 } },
+        annotation: undefined,
+      },
+      scales: {
+        x: { title: { display: true, text: "Strike Price" } },
+        y: { title: { display: true, text: "Delta" }, min: -1, max: 1 },
+      },
+    },
+    plugins: [{
+      id: "spotLine",
+      afterDraw(chart) {
+        const xScale = chart.scales.x;
+        const yScale = chart.scales.y;
+        const x = xScale.getPixelForValue(spotPrice);
+        if (x >= xScale.left && x <= xScale.right) {
+          const ctx = chart.ctx;
+          ctx.save();
+          ctx.beginPath();
+          ctx.setLineDash([6, 4]);
+          ctx.strokeStyle = "#6366f1";
+          ctx.lineWidth = 1.5;
+          ctx.moveTo(x, yScale.top);
+          ctx.lineTo(x, yScale.bottom);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.fillStyle = "#6366f1";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.fillText("Spot $" + spotPrice.toFixed(2), x, yScale.top - 6);
+          ctx.restore();
+        }
+      },
+    }],
+  });
 }
 
 const DTE_KEYS = ["0d", "1-7d", "8-30d", "31-90d", "91-180d", "181-365d"];
