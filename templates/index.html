@@ -101,16 +101,47 @@ function renderExpiration() {
   const content = document.getElementById("content");
 
   content.innerHTML = '<div class="chart-wrap"><canvas id="deltaChart"></canvas></div>'
+    + '<div class="chart-wrap"><canvas id="ivChart"></canvas></div>'
     + '<div class="tables">'
     + '<div class="table-wrap"><h2>Calls</h2><div id="table-calls"></div></div>'
     + '<div class="table-wrap"><h2>Puts</h2><div id="table-puts"></div></div>'
     + '</div>';
   renderDeltaChart(exp.calls, exp.puts, optionsData.price);
+  renderIvChart(exp.calls, exp.puts, optionsData.price);
   buildSortableTable("table-calls", exp.calls);
   buildSortableTable("table-puts", exp.puts);
 }
 
 let deltaChartInstance = null;
+let ivChartInstance = null;
+
+function makeSpotLinePlugin(spotPrice) {
+  return {
+    id: "spotLine",
+    afterDraw(chart) {
+      const xScale = chart.scales.x;
+      const yScale = chart.scales.y;
+      const x = xScale.getPixelForValue(spotPrice);
+      if (x >= xScale.left && x <= xScale.right) {
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.beginPath();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = "#6366f1";
+        ctx.lineWidth = 1.5;
+        ctx.moveTo(x, yScale.top);
+        ctx.lineTo(x, yScale.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#6366f1";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("Spot $" + spotPrice.toFixed(2), x, yScale.top - 6);
+        ctx.restore();
+      }
+    },
+  };
+}
 
 function renderDeltaChart(calls, puts, spotPrice) {
   if (deltaChartInstance) deltaChartInstance.destroy();
@@ -150,38 +181,61 @@ function renderDeltaChart(calls, puts, spotPrice) {
       responsive: true,
       plugins: {
         title: { display: true, text: "Delta vs Strike Price", font: { size: 16 } },
-        annotation: undefined,
       },
       scales: {
         x: { title: { display: true, text: "Strike Price" } },
         y: { title: { display: true, text: "Delta" }, min: -1, max: 1 },
       },
     },
-    plugins: [{
-      id: "spotLine",
-      afterDraw(chart) {
-        const xScale = chart.scales.x;
-        const yScale = chart.scales.y;
-        const x = xScale.getPixelForValue(spotPrice);
-        if (x >= xScale.left && x <= xScale.right) {
-          const ctx = chart.ctx;
-          ctx.save();
-          ctx.beginPath();
-          ctx.setLineDash([6, 4]);
-          ctx.strokeStyle = "#6366f1";
-          ctx.lineWidth = 1.5;
-          ctx.moveTo(x, yScale.top);
-          ctx.lineTo(x, yScale.bottom);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.fillStyle = "#6366f1";
-          ctx.font = "12px sans-serif";
-          ctx.textAlign = "center";
-          ctx.fillText("Spot $" + spotPrice.toFixed(2), x, yScale.top - 6);
-          ctx.restore();
-        }
+    plugins: [makeSpotLinePlugin(spotPrice)],
+  });
+}
+
+function renderIvChart(calls, puts, spotPrice) {
+  if (ivChartInstance) ivChartInstance.destroy();
+
+  const callData = calls
+    .filter(r => r.iv !== null)
+    .map(r => ({ x: r.strike, y: r.iv }));
+  const putData = puts
+    .filter(r => r.iv !== null)
+    .map(r => ({ x: r.strike, y: r.iv }));
+
+  ivChartInstance = new Chart(document.getElementById("ivChart"), {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Call IV",
+          data: callData,
+          borderColor: "#16a34a",
+          backgroundColor: "rgba(22,163,74,0.15)",
+          showLine: true,
+          pointRadius: 2,
+          borderWidth: 2,
+        },
+        {
+          label: "Put IV",
+          data: putData,
+          borderColor: "#dc2626",
+          backgroundColor: "rgba(220,38,38,0.15)",
+          showLine: true,
+          pointRadius: 2,
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: "Implied Volatility vs Strike Price", font: { size: 16 } },
       },
-    }],
+      scales: {
+        x: { title: { display: true, text: "Strike Price" } },
+        y: { title: { display: true, text: "IV (%)" }, min: 0 },
+      },
+    },
+    plugins: [makeSpotLinePlugin(spotPrice)],
   });
 }
 
