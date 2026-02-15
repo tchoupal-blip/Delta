@@ -71,7 +71,7 @@ async function fetchData() {
       throw new Error(err.detail || "Request failed");
     }
     optionsData = await res.json();
-    info.textContent = optionsData.ticker + "  —  $" + optionsData.price.toFixed(2);
+    info.textContent = optionsData.ticker + "  \u2014  $" + optionsData.price.toFixed(2);
 
     // Populate expiration dropdown
     expSelect.innerHTML = "";
