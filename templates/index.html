@@ -6,39 +6,63 @@
 <title>Options Delta &amp; IV Calculator</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
+  :root {
+    --bg: #f5f7fa; --fg: #333; --card-bg: #fff; --border: #eee;
+    --input-border: #ccc; --input-bg: #fff; --input-fg: #333;
+    --th-bg: #1e293b; --th-hover: #334155; --th-dte: #334155;
+    --dte-bg: #f8fafc; --dte-hover: #e8eeff;
+    --row-hover: #f0f4ff; --loading-fg: #666;
+    --shadow: rgba(0,0,0,0.1); --chart-title: #666;
+  }
+  [data-theme="dark"] {
+    --bg: #0f172a; --fg: #e2e8f0; --card-bg: #1e293b; --border: #334155;
+    --input-border: #475569; --input-bg: #1e293b; --input-fg: #e2e8f0;
+    --th-bg: #0f172a; --th-hover: #1e293b; --th-dte: #0f172a;
+    --dte-bg: #1a2332; --dte-hover: #253347;
+    --row-hover: #253347; --loading-fg: #94a3b8;
+    --shadow: rgba(0,0,0,0.3); --chart-title: #94a3b8;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #333; padding: 20px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--fg); padding: 20px; transition: background 0.2s, color 0.2s; }
   h1 { text-align: center; margin-bottom: 20px; }
+  .header { display: flex; justify-content: center; align-items: center; margin-bottom: 20px; position: relative; }
+  .header h1 { margin-bottom: 0; }
+  .theme-toggle { position: absolute; right: 0; padding: 6px 12px; font-size: 20px; background: var(--card-bg); border: 1px solid var(--input-border); border-radius: 4px; cursor: pointer; line-height: 1; }
   .controls { display: flex; gap: 10px; justify-content: center; align-items: center; flex-wrap: wrap; margin-bottom: 20px; }
-  input[type="text"] { padding: 8px 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; width: 140px; text-transform: uppercase; }
+  input[type="text"] { padding: 8px 12px; font-size: 16px; border: 1px solid var(--input-border); border-radius: 4px; width: 140px; text-transform: uppercase; background: var(--input-bg); color: var(--input-fg); }
   button { padding: 8px 18px; font-size: 16px; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
   button:hover { background: #1d4ed8; }
   button:disabled { background: #94a3b8; cursor: not-allowed; }
-  select { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+  select { padding: 8px; font-size: 14px; border: 1px solid var(--input-border); border-radius: 4px; background: var(--input-bg); color: var(--input-fg); }
   .info { text-align: center; margin-bottom: 16px; font-size: 18px; }
   .tables { display: grid; grid-template-columns: 1fr; gap: 20px; }
   @media (max-width: 900px) { .tables { grid-template-columns: 1fr; } }
   .table-wrap h2 { margin-bottom: 8px; }
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-  th, td { padding: 6px 8px; text-align: right; font-size: 12px; border-bottom: 1px solid #eee; white-space: nowrap; }
-  .dte-col { background: #f8fafc; }
-  tr:hover .dte-col { background: #e8eeff; }
-  th.dte-col { background: #334155; }
-  th { background: #1e293b; color: #fff; position: sticky; top: 0; cursor: pointer; user-select: none; }
-  th:hover { background: #334155; }
+  table { width: 100%; border-collapse: collapse; background: var(--card-bg); border-radius: 6px; overflow: hidden; box-shadow: 0 1px 3px var(--shadow); }
+  th, td { padding: 6px 8px; text-align: right; font-size: 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  .dte-col { background: var(--dte-bg); }
+  tr:hover .dte-col { background: var(--dte-hover); }
+  th.dte-col { background: var(--th-dte); }
+  th { background: var(--th-bg); color: #fff; position: sticky; top: 0; cursor: pointer; user-select: none; }
+  th:hover { background: var(--th-hover); }
   th .sort-arrow { font-size: 10px; margin-left: 3px; opacity: 0.4; }
   th.sorted .sort-arrow { opacity: 1; }
   td:first-child, th:first-child { text-align: left; }
-  tr:hover td { background: #f0f4ff; }
-  .loading { text-align: center; padding: 40px; font-size: 16px; color: #666; }
+  tr:hover td { background: var(--row-hover); }
+  .loading { text-align: center; padding: 40px; font-size: 16px; color: var(--loading-fg); }
   .error { text-align: center; color: #dc2626; padding: 20px; }
   .pos { color: #16a34a; }
   .neg { color: #dc2626; }
-  .chart-wrap { max-width: 900px; margin: 0 auto 24px; background: #fff; border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  [data-theme="dark"] .pos { color: #4ade80; }
+  [data-theme="dark"] .neg { color: #f87171; }
+  .chart-wrap { max-width: 900px; margin: 0 auto 24px; background: var(--card-bg); border-radius: 6px; padding: 16px; box-shadow: 0 1px 3px var(--shadow); }
 </style>
 </head>
 <body>
-<h1>Options Delta &amp; IV Calculator</h1>
+<div class="header">
+  <h1>Options Delta &amp; IV Calculator</h1>
+  <button class="theme-toggle" id="themeToggle" title="Toggle dark mode"></button>
+</div>
 
 <div class="controls">
   <input type="text" id="ticker" placeholder="e.g. AAPL" />
@@ -392,6 +416,36 @@ function buildSortableTable(containerId, rows) {
 document.getElementById("ticker").addEventListener("keydown", function(e) {
   if (e.key === "Enter") fetchData();
 });
+
+// Dark mode toggle
+function isDark() { return document.documentElement.getAttribute("data-theme") === "dark"; }
+
+function updateChartColors() {
+  const color = isDark() ? "#94a3b8" : "#666";
+  const gridColor = isDark() ? "rgba(148,163,184,0.15)" : "rgba(0,0,0,0.1)";
+  Chart.defaults.color = color;
+  Chart.defaults.scale.grid = { color: gridColor };
+  // Re-render if data loaded
+  if (optionsData) renderExpiration();
+}
+
+function applyTheme(dark) {
+  document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  document.getElementById("themeToggle").textContent = dark ? "\u2600\uFE0F" : "\uD83C\uDF19";
+  localStorage.setItem("theme", dark ? "dark" : "light");
+  updateChartColors();
+}
+
+document.getElementById("themeToggle").addEventListener("click", function() {
+  applyTheme(!isDark());
+});
+
+// Init theme from localStorage or system preference
+(function() {
+  const saved = localStorage.getItem("theme");
+  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  applyTheme(saved ? saved === "dark" : prefersDark);
+})();
 </script>
 </body>
 </html>
