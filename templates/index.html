@@ -102,12 +102,14 @@ function renderExpiration() {
 
   content.innerHTML = '<div class="chart-wrap"><canvas id="deltaChart"></canvas></div>'
     + '<div class="chart-wrap"><canvas id="ivChart"></canvas></div>'
+    + '<div class="chart-wrap"><canvas id="deltaDteChart"></canvas></div>'
     + '<div class="tables">'
     + '<div class="table-wrap"><h2>Calls</h2><div id="table-calls"></div></div>'
     + '<div class="table-wrap"><h2>Puts</h2><div id="table-puts"></div></div>'
     + '</div>';
   renderDeltaChart(exp.calls, exp.puts, optionsData.price);
   renderIvChart(exp.calls, exp.puts, optionsData.price);
+  renderDeltaDteChart(exp.calls, exp.puts, optionsData.price);
   buildSortableTable("table-calls", exp.calls);
   buildSortableTable("table-puts", exp.puts);
 }
@@ -240,6 +242,74 @@ function renderIvChart(calls, puts, spotPrice) {
 }
 
 const DTE_KEYS = ["0d", "1-7d", "8-30d", "31-90d", "91-180d", "181-365d"];
+const DTE_DAYS = [0, 4, 19, 60, 135, 273];
+
+let deltaDteChartInstance = null;
+
+function renderDeltaDteChart(calls, puts, spotPrice) {
+  if (deltaDteChartInstance) deltaDteChartInstance.destroy();
+
+  // Pick ~5 strikes near ATM
+  const pickNear = (rows, n) => {
+    const valid = rows.filter(r => r.delta !== null && r.deltaByDte);
+    valid.sort((a, b) => Math.abs(a.strike - spotPrice) - Math.abs(b.strike - spotPrice));
+    return valid.slice(0, n);
+  };
+
+  const nearCalls = pickNear(calls, 5);
+  const nearPuts = pickNear(puts, 5);
+
+  const callColors = ["#16a34a", "#15803d", "#22c55e", "#4ade80", "#86efac"];
+  const putColors = ["#dc2626", "#b91c1c", "#ef4444", "#f87171", "#fca5a5"];
+
+  const datasets = [];
+  nearCalls.forEach((c, i) => {
+    datasets.push({
+      label: "Call $" + c.strike.toFixed(0),
+      data: DTE_KEYS.map((k, j) => ({
+        x: DTE_DAYS[j],
+        y: c.deltaByDte[k],
+      })).filter(d => d.y !== null),
+      borderColor: callColors[i],
+      backgroundColor: callColors[i],
+      showLine: true,
+      pointRadius: 3,
+      borderWidth: 2,
+      borderDash: [],
+    });
+  });
+  nearPuts.forEach((p, i) => {
+    datasets.push({
+      label: "Put $" + p.strike.toFixed(0),
+      data: DTE_KEYS.map((k, j) => ({
+        x: DTE_DAYS[j],
+        y: p.deltaByDte[k],
+      })).filter(d => d.y !== null),
+      borderColor: putColors[i],
+      backgroundColor: putColors[i],
+      showLine: true,
+      pointRadius: 3,
+      borderWidth: 2,
+      borderDash: [4, 3],
+    });
+  });
+
+  deltaDteChartInstance = new Chart(document.getElementById("deltaDteChart"), {
+    type: "scatter",
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: "Delta vs Days to Expiration (near-ATM strikes)", font: { size: 16 } },
+        legend: { labels: { font: { size: 11 } } },
+      },
+      scales: {
+        x: { title: { display: true, text: "Days to Expiration" }, min: 0 },
+        y: { title: { display: true, text: "Delta" }, min: -1, max: 1 },
+      },
+    },
+  });
+}
 
 const COLUMNS = [
   { key: "strike", label: "Strike", fmt: v => v !== null ? v.toFixed(2) : "\u2014" },
