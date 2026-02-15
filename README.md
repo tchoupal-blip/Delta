@@ -2,6 +2,8 @@
 
 A web application that calculates options **Delta** and **Implied Volatility (IV)** for any stock ticker using live data from Yahoo Finance.
 
+![Screenshot](screenshot.jpg)
+
 ## Features
 
 - Real-time options chain data via yfinance
